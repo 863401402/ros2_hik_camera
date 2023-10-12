@@ -17,6 +17,19 @@ public:
   {
     RCLCPP_INFO(this->get_logger(), "Starting HikCameraNode!");
 
+    // Load camera info
+    camera_name_ = this->declare_parameter("camera_name", "narrow_stereo");
+    camera_info_manager_ =
+            std::make_unique<camera_info_manager::CameraInfoManager>(this, camera_name_);
+    auto camera_info_url =
+            this->declare_parameter("camera_info_url", "package://hik_camera/config/camera_info.yaml");
+    if (camera_info_manager_->validateURL(camera_info_url)) {
+        camera_info_manager_->loadCameraInfo(camera_info_url);
+        camera_info_msg_ = camera_info_manager_->getCameraInfo();
+    } else {
+        RCLCPP_WARN(this->get_logger(), "Invalid camera info URL: %s", camera_info_url.c_str());
+    }
+
     MV_CC_DEVICE_INFO_LIST DeviceList;
     // enum device
     nRet = MV_CC_EnumDevices(MV_USB_DEVICE, &DeviceList);
@@ -35,11 +48,11 @@ public:
 
     // Get camera infomation
     MV_CC_GetImageInfo(camera_handle_, &img_info_);
-    image_msg_.data.reserve(img_info_.nHeightMax * img_info_.nWidthMax * 3);
+    image_msg_.data.reserve(camera_info_msg_.height * camera_info_msg_.width * 3);
 
     // Init convert param
-    ConvertParam_.nWidth = img_info_.nWidthMax;
-    ConvertParam_.nHeight = img_info_.nHeightMax;
+    ConvertParam_.nWidth = camera_info_msg_.width;
+    ConvertParam_.nHeight = camera_info_msg_.height;
     ConvertParam_.enDstPixelType = PixelType_Gvsp_RGB8_Packed;
 
     bool use_sensor_data_qos = this->declare_parameter("use_sensor_data_qos", false);
@@ -49,19 +62,6 @@ public:
     declareParameters();
 
     MV_CC_StartGrabbing(camera_handle_);
-
-    // Load camera info
-    camera_name_ = this->declare_parameter("camera_name", "narrow_stereo");
-    camera_info_manager_ =
-      std::make_unique<camera_info_manager::CameraInfoManager>(this, camera_name_);
-    auto camera_info_url =
-      this->declare_parameter("camera_info_url", "package://hik_camera/config/camera_info.yaml");
-    if (camera_info_manager_->validateURL(camera_info_url)) {
-      camera_info_manager_->loadCameraInfo(camera_info_url);
-      camera_info_msg_ = camera_info_manager_->getCameraInfo();
-    } else {
-      RCLCPP_WARN(this->get_logger(), "Invalid camera info URL: %s", camera_info_url.c_str());
-    }
 
     params_callback_handle_ = this->add_on_set_parameters_callback(
       std::bind(&HikCameraNode::parametersCallback, this, std::placeholders::_1));
